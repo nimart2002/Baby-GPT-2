@@ -94,3 +94,52 @@ class OneHeadModel(nn.Module):
             next_id = torch.multinomial(probs, num_samples=1)
             idx = torch.cat([idx, next_id], dim=1)
         return idx
+
+
+class MultiHeadAttention(nn.Module):
+    """Varias cabezas de atención en paralelo; sus salidas se concatenan y se mezclan."""
+
+    def __init__(self, n_embd, n_head, block_size):
+        super().__init__()
+        assert n_embd % n_head == 0, "n_embd debe ser divisible por n_head"
+        head_size = n_embd // n_head
+        self.heads = nn.ModuleList([Head(n_embd, head_size, block_size) for _ in range(n_head)])
+        self.proj = nn.Linear(n_embd, n_embd)               # mezcla lo que trae cada cabeza
+
+    def forward(self, x):
+        out = torch.cat([head(x) for head in self.heads], dim=-1)   # (B, T, n_head * head_size)
+        return self.proj(out)                                        # (B, T, n_embd)
+
+
+class MultiHeadModel(nn.Module):
+    """Como OneHeadModel, pero con varias cabezas de atención."""
+
+    def __init__(self, vocab_size, block_size, n_embd=64, n_head=4):
+        super().__init__()
+        self.block_size = block_size
+        self.tok_emb = nn.Embedding(vocab_size, n_embd)
+        self.pos_emb = nn.Embedding(block_size, n_embd)
+        self.attn = MultiHeadAttention(n_embd, n_head, block_size)
+        self.lm_head = nn.Linear(n_embd, vocab_size)
+
+    def forward(self, idx, targets=None):
+        B, T = idx.shape
+        pos = torch.arange(T, device=idx.device)
+        x = self.tok_emb(idx) + self.pos_emb(pos)
+        x = self.attn(x)
+        logits = self.lm_head(x)
+        loss = None
+        if targets is not None:
+            B, T, V = logits.shape
+            loss = F.cross_entropy(logits.view(B * T, V), targets.view(B * T))
+        return logits, loss
+
+    @torch.no_grad()
+    def generate(self, idx, max_new_tokens):
+        for _ in range(max_new_tokens):
+            idx_cond = idx[:, -self.block_size:]
+            logits, _ = self(idx_cond)
+            probs = F.softmax(logits[:, -1, :], dim=-1)
+            next_id = torch.multinomial(probs, num_samples=1)
+            idx = torch.cat([idx, next_id], dim=1)
+        return idx
