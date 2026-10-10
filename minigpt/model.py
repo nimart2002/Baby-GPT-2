@@ -143,3 +143,88 @@ class MultiHeadModel(nn.Module):
             next_id = torch.multinomial(probs, num_samples=1)
             idx = torch.cat([idx, next_id], dim=1)
         return idx
+
+class FeedForward(nn.Module):
+    """Red de dos capas aplicada a cada posición por separado: n_embd -> 4·n_embd -> n_embd."""
+
+    def __init__(self, n_embd, hidden=None):
+        super().__init__()
+        hidden = hidden or 4 * n_embd
+        self.net = nn.Sequential(
+            nn.Linear(n_embd, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, n_embd),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class Block(nn.Module):
+    """Bloque transformer: atención (comunicación) + MLP (cálculo).
+
+    Los interruptores use_mlp, use_residual y use_layernorm existen solo para los
+    experimentos de este paso; el bloque de GPT-2 usa los tres.
+    """
+
+    def __init__(self, n_embd, n_head, block_size,
+                 use_mlp=True, use_residual=True, use_layernorm=True):
+        super().__init__()
+        self.use_mlp = use_mlp
+        self.use_residual = use_residual
+        self.attn = MultiHeadAttention(n_embd, n_head, block_size)
+        self.mlp = FeedForward(n_embd) if use_mlp else None
+        # nn.Identity() no hace nada: devuelve la entrada tal cual
+        self.ln1 = nn.LayerNorm(n_embd) if use_layernorm else nn.Identity()
+        self.ln2 = nn.LayerNorm(n_embd) if use_layernorm else nn.Identity()
+
+    def forward(self, x):
+        if self.use_residual:
+            x = x + self.attn(self.ln1(x))          # sumar lo que trae la atención
+            if self.use_mlp:
+                x = x + self.mlp(self.ln2(x))       # sumar lo que calcula el MLP
+        else:
+            x = self.attn(self.ln1(x))              # sustituir (sin residual)
+            if self.use_mlp:
+                x = self.mlp(self.ln2(x))
+        return x
+
+
+class BlockModel(nn.Module):
+    """Embeddings + n_layer bloques apilados + LayerNorm final + capa de salida."""
+
+    def __init__(self, vocab_size, block_size, n_embd=64, n_head=4, n_layer=1,
+                 use_mlp=True, use_residual=True, use_layernorm=True):
+        super().__init__()
+        self.block_size = block_size
+        self.tok_emb = nn.Embedding(vocab_size, n_embd)
+        self.pos_emb = nn.Embedding(block_size, n_embd)
+        self.blocks = nn.Sequential(*[
+            Block(n_embd, n_head, block_size, use_mlp, use_residual, use_layernorm)
+            for _ in range(n_layer)
+        ])
+        self.ln_f = nn.LayerNorm(n_embd) if use_layernorm else nn.Identity()
+        self.lm_head = nn.Linear(n_embd, vocab_size)
+
+    def forward(self, idx, targets=None):
+        B, T = idx.shape
+        pos = torch.arange(T, device=idx.device)
+        x = self.tok_emb(idx) + self.pos_emb(pos)
+        x = self.blocks(x)                                  # pasa por todos los bloques en orden
+        x = self.ln_f(x)
+        logits = self.lm_head(x)
+        loss = None
+        if targets is not None:
+            B, T, V = logits.shape
+            loss = F.cross_entropy(logits.view(B * T, V), targets.view(B * T))
+        return logits, loss
+
+    @torch.no_grad()
+    def generate(self, idx, max_new_tokens):
+        for _ in range(max_new_tokens):
+            idx_cond = idx[:, -self.block_size:]
+            logits, _ = self(idx_cond)
+            probs = F.softmax(logits[:, -1, :], dim=-1)
+            next_id = torch.multinomial(probs, num_samples=1)
+            idx = torch.cat([idx, next_id], dim=1)
+        return idx
