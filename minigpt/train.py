@@ -4,7 +4,7 @@ import random
 
 import torch
 
-from batches import get_batch
+from minigpt.batches import get_batch
 
 
 def train(model, tokenizer, steps, batch_size, block_size, lr, seed=0, log_every=100):
@@ -30,8 +30,8 @@ def train(model, tokenizer, steps, batch_size, block_size, lr, seed=0, log_every
 
 
 if __name__ == "__main__":
-    from model import BigramModel
-    from tokenizer import BOS, build_grid_tokenizer
+    from minigpt.model import BigramModel
+    from minigpt.tokenizer import BOS, build_grid_tokenizer
 
     tok = build_grid_tokenizer()
     model = BigramModel(tok.vocab_size)

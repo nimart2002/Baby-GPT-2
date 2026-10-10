@@ -1,6 +1,6 @@
 """Tokenizador: convierte palabras en números enteros y viceversa."""
 
-from data import DIRECTIONS, NAMES
+from minigpt.data import DIRECTIONS, NAMES
 
 class Tokenizer:
     def __init__(self, vocab):
@@ -29,7 +29,7 @@ def build_grid_tokenizer():
 
 if __name__ == "__main__":
     import random
-    from data import make_grid, random_walk
+    from minigpt.data import make_grid, random_walk
 
     tok = build_grid_tokenizer()
     print("Tamaño del vocabulario:", tok.vocab_size)

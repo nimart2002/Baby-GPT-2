@@ -3,8 +3,8 @@ import random
 
 import torch
 
-from data import make_grid, random_walk
-from tokenizer import BOS
+from minigpt.data import make_grid, random_walk
+from minigpt.tokenizer import BOS
 
 def make_sequence(tokenizer, block_size, rng):
     """Una secuencia de block_size + 1 números: <bos> seguido de un recorrido."""
@@ -30,7 +30,7 @@ def get_batch(tokenizer, batch_size, block_size, rng):
 
 
 if __name__ == "__main__":
-    from tokenizer import build_grid_tokenizer
+    from minigpt.tokenizer import build_grid_tokenizer
 
     tok = build_grid_tokenizer()
     rng = random.Random(0)
